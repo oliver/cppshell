@@ -159,6 +159,7 @@
             <child>
               <widget class="GtkToolButton" id="tbExecute">
                 <property name="visible">True</property>
+                <property name="tooltip" translatable="yes">Execute</property>
                 <property name="label" translatable="yes">Execute</property>
                 <property name="use_underline">True</property>
                 <property name="stock_id">gtk-execute</property>

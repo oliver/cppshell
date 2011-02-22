@@ -244,7 +244,12 @@ class CppShellGui:
         self.txtIn.modify_font(pangoFont)
         self.txtOut.modify_font(pangoFont)
 
-        #self.bufferIn.set_text("""cout << "test" << endl;\n""")
+        accel_group = gtk.AccelGroup()
+        self.tree.get_widget("winMain").add_accel_group(accel_group)
+        self.tree.get_widget("tbExecute").add_accelerator("clicked", accel_group,
+            gtk.keysyms.Return, gtk.gdk.CONTROL_MASK, gtk.ACCEL_VISIBLE)
+        self.tree.get_widget("tbExecute").add_accelerator("clicked", accel_group,
+            gtk.keysyms.KP_Enter, gtk.gdk.CONTROL_MASK, gtk.ACCEL_VISIBLE)
 
         self.queue = ExecQueue()
 

@@ -226,6 +226,9 @@ class CppShellGui:
         self.bufferIn = gtk.TextBuffer()
         self.txtIn.set_buffer(self.bufferIn)
 
+        self.numInputLines = 0
+        self.bufferIn.connect('changed', self.onInputChanged)
+
         self.txtOut = self.tree.get_widget('txtOutput')
         self.bufferOut = gtk.TextBuffer()
         self.txtOut.set_buffer(self.bufferOut)
@@ -250,7 +253,16 @@ class CppShellGui:
     def on_winMain_delete_event (self, widget, dummy):
         gtk.main_quit()
 
+    def onInputChanged (self, buffer):
+        numLines = buffer.get_line_count()
+        if numLines != self.numInputLines:
+            self.numInputLines = numLines
+            self.execute()
+
     def on_tbExecute_clicked (self, button):
+        self.execute()
+
+    def execute (self):
         print "executing..."
         text = self.bufferIn.get_text(self.bufferIn.get_start_iter(), self.bufferIn.get_end_iter())
         print text

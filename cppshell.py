@@ -127,11 +127,17 @@ class Executer:
 
 
 class Task:
-    def __init__ (self, inText, onOutput):
+    def __init__ (self, inText, onOutput, onStateChanged):
         self.inputText = inText
+        self.onOutput = onOutput
+        self.onStateChanged = onStateChanged
+        self.state = STATE_INITIAL
         self.exePath = None
         self.outputText = None
-        self.onOutput = onOutput
+
+    def setState (self, newState):
+        self.state = newState
+        self.onStateChanged(self, newState)
 
     def start (self, taskFinishedCb):
         self.taskFinishedCb = taskFinishedCb
@@ -139,8 +145,10 @@ class Task:
 
     def work (self):
         if self.exePath is None:
+            self.setState(STATE_COMPILING)
             self.compiler = Compiler(self.inputText, self._onCompileFinished)
         elif self.outputText is None:
+            self.setState(STATE_RUNNING)
             self.executer = Executer(self.exePath, self._onExecFinished, self.onOutput)
         else:
             # should not happen
@@ -155,6 +163,7 @@ class Task:
     def _onExecFinished (self):
         print "execution finished"
         self.outputText = "abc"
+        self.setState(STATE_FINISHED)
         self.taskFinishedCb()
 
 #    def _onOutput (self, line):
@@ -262,9 +271,14 @@ class CppShellGui:
                 includeLines += line
             else:
                 codeLines += line
-        
+
         cppText = cppTemplate % (includeLines, codeLines)
-        return Task(cppText, self.onOutput)
+        return Task(cppText, self.onOutput, self.onTaskChanged)
+
+    def onTaskChanged (self, task, newState):
+        "called when current Task makes a state change"
+        if newState == STATE_RUNNING:
+            self.bufferOut.set_text('')
 
     def onOutput (self, text):
         self.bufferOut.insert(self.bufferOut.get_end_iter(), text)

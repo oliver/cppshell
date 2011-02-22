@@ -277,8 +277,17 @@ class CppShellGui:
 
     def onTaskChanged (self, task, newState):
         "called when current Task makes a state change"
-        if newState == STATE_RUNNING:
+        imgStatus = self.tree.get_widget('imgStatus')
+        iconSize = gtk.ICON_SIZE_MENU
+        if newState == STATE_COMPILING:
+            imgStatus.set_from_stock(gtk.STOCK_CONVERT, iconSize)
+        elif newState == STATE_RUNNING:
+            imgStatus.set_from_stock(gtk.STOCK_EXECUTE, iconSize)
             self.bufferOut.set_text('')
+        elif newState == STATE_FINISHED:
+            imgStatus.set_from_stock(gtk.STOCK_YES, iconSize)
+        else:
+            imgStatus.clear()
 
     def onOutput (self, text):
         self.bufferOut.insert(self.bufferOut.get_end_iter(), text)

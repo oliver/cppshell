@@ -99,13 +99,16 @@ class Executer:
         cmd = [command]
         print cmd
 
-        self.proc = GProcess(cmd, self.onProcFinished, self.onOutput, self.onOutput)
+        self.proc = GProcess(cmd, self.onProcFinished, self.onStdout, self.onStderr)
 
     def onProcFinished (self, exitCode):
         self.finishedCb()
 
-    def onOutput (self, text):
-        self.outputCb(text)
+    def onStdout (self, text):
+        self.outputCb(text, 'stdout')
+
+    def onStderr (self, text):
+        self.outputCb(text, 'stderr')
 
 
 (STATE_INITIAL, STATE_COMPILING, STATE_RUNNING, STATE_FINISHED) = range(0, 4)
@@ -225,6 +228,7 @@ class CppShellGui:
         self.txtOut = self.tree.get_widget('txtOutput')
         self.bufferOut = gtk.TextBuffer()
         self.txtOut.set_buffer(self.bufferOut)
+        self.tagStderr = self.bufferOut.create_tag(foreground='red')
 
         pangoFont = pango.FontDescription("Monospace")
         self.txtIn.modify_font(pangoFont)
@@ -303,8 +307,15 @@ class CppShellGui:
         else:
             imgStatus.clear()
 
-    def onOutput (self, text):
-        self.bufferOut.insert(self.bufferOut.get_end_iter(), text)
+    def onOutput (self, text, typ):
+        if typ == 'stderr':
+            startOffset = self.bufferOut.get_end_iter().get_offset()
+            self.bufferOut.insert(self.bufferOut.get_end_iter(), text)
+            start = self.bufferOut.get_iter_at_offset(startOffset)
+            end = self.bufferOut.get_end_iter()
+            self.bufferOut.apply_tag(self.tagStderr, start, end)
+        else:
+            self.bufferOut.insert(self.bufferOut.get_end_iter(), text)
 
 if __name__ == '__main__':
     gui = CppShellGui()

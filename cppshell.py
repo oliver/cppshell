@@ -21,7 +21,8 @@ class GProcess:
     def __init__ (self, cmd, onFinished=None, onStdout=None, onStderr=None):
         self.onFinished = onFinished
 
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.fdIn = open('/dev/null', 'r')
+        self.proc = subprocess.Popen(cmd, stdin=self.fdIn.fileno(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         # make pipes non-blocking:
         fl = fcntl.fcntl(self.proc.stdout, fcntl.F_GETFL)
@@ -62,6 +63,7 @@ class GProcess:
 
                 if self.onFinished:
                     self.onFinished(exitCode)
+                self.fdIn.close()
             return False
 
 

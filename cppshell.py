@@ -51,21 +51,19 @@ class Compiler:
                 if len(readText) <= 0:
                     break
 
-            result = fd.close()
-            if result == None:
-                print "(command finished successfully)"
-                pass
-            else:
-                print "(command finished with exit code %d; exited: %s, exit status: %d)" % (result,
-                    str(os.WIFEXITED(result)), os.WEXITSTATUS(result))
-                pass
-            self.proc.wait()
-
+            fd.close()
             self.pipesOpen -= 1
             print "now have %d pipes open" % self.pipesOpen
             if self.pipesOpen <= 0:
+                exitCode = self.proc.wait()
+                print "exitCode: %d" % exitCode
+                assert(exitCode is not None) # child should have terminated now
+
                 os.unlink(self.tempFile)
-                self.onFinishedCb(self.exePath)
+                if exitCode == 0:
+                    self.onFinishedCb(self.exePath, None)
+                else:
+                    self.onFinishedCb(None, "compile error")
             return False
 
 
@@ -106,19 +104,13 @@ class Executer:
                     break
                 self.outputCb(readText)
 
-            result = fd.close()
-            if result == None:
-                print "(command finished successfully)"
-                pass
-            else:
-                print "(command finished with exit code %d; exited: %s, exit status: %d)" % (result,
-                    str(os.WIFEXITED(result)), os.WEXITSTATUS(result))
-                pass
-            self.proc.wait()
-
+            fd.close()
             self.pipesOpen -= 1
             print "now have %d pipes open" % self.pipesOpen
             if self.pipesOpen <= 0:
+                exitCode = self.proc.wait()
+                print "exitCode: %s" % exitCode
+                assert(exitCode is not None) # child should have terminated now
                 self.finishedCb()
             return False
 
@@ -131,6 +123,7 @@ class Task:
         self.inputText = inText
         self.onOutput = onOutput
         self.onStateChanged = onStateChanged
+        self.errorDetails = None
         self.state = STATE_INITIAL
         self.exePath = None
         self.outputText = None
@@ -138,6 +131,9 @@ class Task:
     def setState (self, newState):
         self.state = newState
         self.onStateChanged(self, newState)
+
+    def error (self):
+        return self.errorDetails
 
     def start (self, taskFinishedCb):
         self.taskFinishedCb = taskFinishedCb
@@ -154,11 +150,16 @@ class Task:
             # should not happen
             assert(False)
 
-    def _onCompileFinished (self, exePath):
+    def _onCompileFinished (self, exePath, error):
         print "compile finished; exe: '%s'" % exePath
-        self.exePath = exePath
-        self.compiler = None
-        self.work()
+        if error:
+            self.errorDetails = error
+            self.setState(STATE_FINISHED)
+            self.taskFinishedCb()
+        else:
+            self.exePath = exePath
+            self.compiler = None
+            self.work()
 
     def _onExecFinished (self):
         print "execution finished"
@@ -285,7 +286,10 @@ class CppShellGui:
             imgStatus.set_from_stock(gtk.STOCK_EXECUTE, iconSize)
             self.bufferOut.set_text('')
         elif newState == STATE_FINISHED:
-            imgStatus.set_from_stock(gtk.STOCK_YES, iconSize)
+            if task.error() is None:
+                imgStatus.set_from_stock(gtk.STOCK_YES, iconSize)
+            else:
+                imgStatus.set_from_stock(gtk.STOCK_NO, iconSize)
         else:
             imgStatus.clear()
 

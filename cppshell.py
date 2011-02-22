@@ -32,6 +32,13 @@ class Compiler:
         print cmd
 
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        # make pipes non-blocking:
+        fl = fcntl.fcntl(self.proc.stdout, fcntl.F_GETFL)
+        fcntl.fcntl(self.proc.stdout, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+        fl = fcntl.fcntl(self.proc.stderr, fcntl.F_GETFL)
+        fcntl.fcntl(self.proc.stderr, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
         gobject.io_add_watch(self.proc.stdout, gobject.IO_IN | gobject.IO_ERR | gobject.IO_HUP,
             self._onReadable)
         gobject.io_add_watch(self.proc.stderr, gobject.IO_IN | gobject.IO_ERR | gobject.IO_HUP,

@@ -17,6 +17,54 @@ import gtk.glade
 import pango
 
 
+class GProcess:
+    def __init__ (self, cmd, onFinished=None, onStdout=None, onStderr=None):
+        self.onFinished = onFinished
+
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        # make pipes non-blocking:
+        fl = fcntl.fcntl(self.proc.stdout, fcntl.F_GETFL)
+        fcntl.fcntl(self.proc.stdout, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+        fl = fcntl.fcntl(self.proc.stderr, fcntl.F_GETFL)
+        fcntl.fcntl(self.proc.stderr, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+        gobject.io_add_watch(self.proc.stdout, gobject.IO_IN | gobject.IO_ERR | gobject.IO_HUP,
+            self._onReadable, onStdout)
+        gobject.io_add_watch(self.proc.stderr, gobject.IO_IN | gobject.IO_ERR | gobject.IO_HUP,
+            self._onReadable, onStderr)
+        self.pipesOpen = 2
+
+    def _onReadable (self, fd, cond, callback):
+        if (cond & gobject.IO_IN):
+            readText = fd.read(4000)
+            print "(read %d bytes)" % len(readText)
+            if callback:
+                callback(readText)
+            return True
+        else:
+            # read all remaining data from pipe
+            while True:
+                readText = fd.read(4000)
+                print "(read %d bytes before finish)" % len(readText)
+                if len(readText) <= 0:
+                    break
+                if callback:
+                    callback(readText)
+
+            fd.close()
+            self.pipesOpen -= 1
+            print "now have %d pipes open" % self.pipesOpen
+            if self.pipesOpen <= 0:
+                exitCode = self.proc.wait()
+                print "exitCode: %d" % exitCode
+                assert(exitCode is not None) # child should have terminated now
+
+                if self.onFinished:
+                    self.onFinished(exitCode)
+            return False
+
+
 class Compiler:
     def __init__ (self, text, onFinishedCb):
         self.onFinishedCb = onFinishedCb
@@ -31,47 +79,14 @@ class Compiler:
         cmd = ['g++', '-W', '-Wall', '-Wextra', self.tempFile, '-o', self.exePath]
         print cmd
 
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.proc = GProcess(cmd, self.onProcFinished)
 
-        # make pipes non-blocking:
-        fl = fcntl.fcntl(self.proc.stdout, fcntl.F_GETFL)
-        fcntl.fcntl(self.proc.stdout, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-        fl = fcntl.fcntl(self.proc.stderr, fcntl.F_GETFL)
-        fcntl.fcntl(self.proc.stderr, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-
-        gobject.io_add_watch(self.proc.stdout, gobject.IO_IN | gobject.IO_ERR | gobject.IO_HUP,
-            self._onReadable)
-        gobject.io_add_watch(self.proc.stderr, gobject.IO_IN | gobject.IO_ERR | gobject.IO_HUP,
-            self._onReadable)
-        self.pipesOpen = 2
-
-    def _onReadable (self, fd, cond):
-        if (cond & gobject.IO_IN):
-            readText = fd.read(4000)
-            print "(read %d bytes)" % len(readText)
-            return True
+    def onProcFinished (self, exitCode):
+        os.unlink(self.tempFile)
+        if exitCode == 0:
+            self.onFinishedCb(self.exePath, None)
         else:
-            # read all remaining data from pipe
-            while True:
-                readText = fd.read(4000)
-                print "(read %d bytes before finish)" % len(readText)
-                if len(readText) <= 0:
-                    break
-
-            fd.close()
-            self.pipesOpen -= 1
-            print "now have %d pipes open" % self.pipesOpen
-            if self.pipesOpen <= 0:
-                exitCode = self.proc.wait()
-                print "exitCode: %d" % exitCode
-                assert(exitCode is not None) # child should have terminated now
-
-                os.unlink(self.tempFile)
-                if exitCode == 0:
-                    self.onFinishedCb(self.exePath, None)
-                else:
-                    self.onFinishedCb(None, "compile error")
-            return False
+            self.onFinishedCb(None, "compile error")
 
 
 class Executer:
@@ -82,44 +97,13 @@ class Executer:
         cmd = [command]
         print cmd
 
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.proc = GProcess(cmd, self.onProcFinished, self.onOutput, self.onOutput)
 
-        # make pipes non-blocking:
-        fl = fcntl.fcntl(self.proc.stdout, fcntl.F_GETFL)
-        fcntl.fcntl(self.proc.stdout, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-        fl = fcntl.fcntl(self.proc.stderr, fcntl.F_GETFL)
-        fcntl.fcntl(self.proc.stderr, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+    def onProcFinished (self, exitCode):
+        self.finishedCb()
 
-        gobject.io_add_watch(self.proc.stdout, gobject.IO_IN | gobject.IO_ERR | gobject.IO_HUP,
-            self._onReadable)
-        gobject.io_add_watch(self.proc.stderr, gobject.IO_IN | gobject.IO_ERR | gobject.IO_HUP,
-            self._onReadable)
-        self.pipesOpen = 2
-
-    def _onReadable (self, fd, cond):
-        if (cond & gobject.IO_IN):
-            readText = fd.read(4000)
-            self.outputCb(readText)
-            print "(read %d bytes)" % len(readText)
-            return True
-        else:
-            # read all remaining data from pipe
-            while True:
-                readText = fd.read(4000)
-                print "(read %d bytes before finish)" % len(readText)
-                if len(readText) <= 0:
-                    break
-                self.outputCb(readText)
-
-            fd.close()
-            self.pipesOpen -= 1
-            print "now have %d pipes open" % self.pipesOpen
-            if self.pipesOpen <= 0:
-                exitCode = self.proc.wait()
-                print "exitCode: %s" % exitCode
-                assert(exitCode is not None) # child should have terminated now
-                self.finishedCb()
-            return False
+    def onOutput (self, text):
+        self.outputCb(text)
 
 
 (STATE_INITIAL, STATE_COMPILING, STATE_RUNNING, STATE_FINISHED) = range(0, 4)

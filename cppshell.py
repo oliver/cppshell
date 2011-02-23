@@ -250,6 +250,8 @@ int main (int argc, char* argv[])
 """
 
 
+MARGIN_WIDTH = 24
+
 class CppShellGui:
     def __init__ (self):
         gladeFile = os.path.join(os.path.realpath( os.path.dirname(sys.argv[0]) ), 'cppshell.glade')
@@ -262,6 +264,11 @@ class CppShellGui:
 
         self.numInputLines = 0
         self.bufferIn.connect('changed', self.onInputChanged)
+
+        self.txtIn.set_border_window_size(gtk.TEXT_WINDOW_LEFT, MARGIN_WIDTH)
+
+        # maps from line number (1-based) to marker widget
+        self.markers = {}
 
         self.txtOut = self.tree.get_widget('txtOutput')
         self.bufferOut = gtk.TextBuffer()
@@ -289,6 +296,16 @@ class CppShellGui:
             self.bufferIn.set_text(text)
         except:
             pass
+
+    def on_txtInput_expose_event (self, widget, event):
+        if self.txtIn.get_window_type(event.window) == gtk.TEXT_WINDOW_LEFT:
+            for lineNo, widget in self.markers.items():
+                it = self.bufferIn.get_iter_at_line(lineNo-1)
+                (bufferY, bufferHeight) = self.txtIn.get_line_yrange(it)
+                (x, y) = self.txtIn.buffer_to_window_coords(gtk.TEXT_WINDOW_LEFT, -MARGIN_WIDTH, bufferY)
+                self.txtIn.move_child(widget, x, y)
+
+        return False
 
     def on_winMain_delete_event (self, widget, dummy):
         gtk.main_quit()
@@ -347,7 +364,12 @@ class CppShellGui:
 
         compilerResult = task.compilerResult()
         if compilerResult is not None:
-            print compilerResult
+            self.clearMarkers()
+            for (w,l) in compilerResult[1]:
+                self.setMarker(l, w, 'warning')
+
+            for (w,l) in compilerResult[0]:
+                self.setMarker(l, w, 'error')
 
     def onOutput (self, text, typ):
         if typ == 'stderr':
@@ -358,6 +380,26 @@ class CppShellGui:
             self.bufferOut.apply_tag(self.tagStderr, start, end)
         else:
             self.bufferOut.insert(self.bufferOut.get_end_iter(), text)
+
+    def clearMarkers (self):
+        for lineNo, widget in self.markers.items():
+            self.txtIn.remove(widget)
+        self.markers = {}
+
+    def setMarker (self, lineNo, text, typ):
+        if self.markers.has_key(lineNo):
+            widget = self.markers[lineNo]
+            self.txtIn.remove(widget)
+
+        widget = gtk.Image()
+        if typ == 'warning':
+            widget.set_from_stock(gtk.STOCK_DIALOG_WARNING, gtk.ICON_SIZE_MENU)
+        else:
+            widget.set_from_stock(gtk.STOCK_DIALOG_ERROR, gtk.ICON_SIZE_MENU)
+        widget.set_tooltip_text(text)
+        widget.show()
+        self.txtIn.add_child_in_window(widget, gtk.TEXT_WINDOW_LEFT, 0, 0)
+        self.markers[lineNo] = widget
 
 if __name__ == '__main__':
     gui = CppShellGui()

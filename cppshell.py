@@ -18,11 +18,11 @@ import pango
 
 
 class GProcess:
-    def __init__ (self, cmd, onFinished=None, onStdout=None, onStderr=None):
+    def __init__ (self, cmd, onFinished=None, onStdout=None, onStderr=None, env=None):
         self.onFinished = onFinished
 
         self.fdIn = open('/dev/null', 'r')
-        self.proc = subprocess.Popen(cmd, stdin=self.fdIn.fileno(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.proc = subprocess.Popen(cmd, stdin=self.fdIn.fileno(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
 
         # make pipes non-blocking:
         fl = fcntl.fcntl(self.proc.stdout, fcntl.F_GETFL)
@@ -70,6 +70,7 @@ class GProcess:
 class Compiler:
     def __init__ (self, text, onFinishedCb):
         self.onFinishedCb = onFinishedCb
+        self.output = ""
 
         (fileno, self.tempFile) = tempfile.mkstemp(prefix='cpp-', suffix='.C', text=True)
         fd = os.fdopen(fileno, 'w')
@@ -81,14 +82,45 @@ class Compiler:
         cmd = ['g++', '-W', '-Wall', '-Wextra', self.tempFile, '-o', self.exePath]
         print cmd
 
-        self.proc = GProcess(cmd, self.onProcFinished)
+        env = os.environ
+        env['LANG'] = ''
+        self.proc = GProcess(cmd, self.onProcFinished, self.onOutput, self.onOutput, env)
 
     def onProcFinished (self, exitCode):
         os.unlink(self.tempFile)
+        (errors, warnings) = self.parseOutput(self.output)
         if exitCode == 0:
-            self.onFinishedCb(self.exePath, None)
+            self.onFinishedCb(self.exePath, errors, warnings)
         else:
-            self.onFinishedCb(None, "compile error")
+            self.onFinishedCb(None, errors, warnings)
+
+    def onOutput (self, text):
+        self.output += text
+
+    def parseOutput (self, output):
+        errors = []
+        warnings = []
+        for l in output.splitlines():
+            #print "C: " + l
+            (loc, msg) = l.split(': ', 1)
+            locTuple = loc.split(':')
+            if locTuple[0] != '_user_code_main_':
+                # ignore messages for code not entered by user
+                continue
+            if len(locTuple) < 2:
+                # ignore messages without line number
+                continue
+
+            lineNo = int(locTuple[1])
+
+            if msg.startswith('error: '):
+                innerMsg = msg[7:]
+                errors.append( (innerMsg, lineNo) )
+            elif msg.startswith('warning: '):
+                innerMsg = msg[9:]
+                warnings.append( (innerMsg, lineNo) )
+
+        return (errors, warnings)
 
 
 class Executer:
@@ -120,6 +152,7 @@ class Task:
         self.onOutput = onOutput
         self.onStateChanged = onStateChanged
         self.errorDetails = None
+        self._compilerResult = None
         self.state = STATE_INITIAL
         self.exePath = None
         self.outputText = None
@@ -130,6 +163,9 @@ class Task:
 
     def error (self):
         return self.errorDetails
+
+    def compilerResult (self):
+        return self._compilerResult
 
     def start (self, taskFinishedCb):
         self.taskFinishedCb = taskFinishedCb
@@ -146,10 +182,11 @@ class Task:
             # should not happen
             assert(False)
 
-    def _onCompileFinished (self, exePath, error):
+    def _onCompileFinished (self, exePath, errors, warnings):
         print "compile finished; exe: '%s'" % exePath
-        if error:
-            self.errorDetails = error
+        self._compilerResult = (errors, warnings)
+        if errors:
+            self.errorDetails = str(errors)
             self.setState(STATE_FINISHED)
             self.taskFinishedCb()
         else:
@@ -206,6 +243,7 @@ using namespace std;
 int main (int argc, char* argv[])
 {
 
+#line 1 "_user_code_main_"
 %s
 
 }
@@ -306,6 +344,10 @@ class CppShellGui:
                 imgStatus.set_from_stock(gtk.STOCK_NO, iconSize)
         else:
             imgStatus.clear()
+
+        compilerResult = task.compilerResult()
+        if compilerResult is not None:
+            print compilerResult
 
     def onOutput (self, text, typ):
         if typ == 'stderr':

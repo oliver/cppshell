@@ -102,7 +102,11 @@ class Compiler:
         warnings = []
         for l in output.splitlines():
             #print "C: " + l
-            (loc, msg) = l.split(': ', 1)
+            try:
+                (loc, msg) = l.split(': ', 1)
+            except:
+                # ignore
+                continue
             locTuple = loc.split(':')
             if locTuple[0] != '_user_code_main_':
                 # ignore messages for code not entered by user

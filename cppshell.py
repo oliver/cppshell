@@ -67,14 +67,33 @@ class GProcess:
             return False
 
 
+cppTemplate = """
+
+%s
+
+#include <iostream>
+using namespace std;
+
+int main (int argc, char* argv[])
+{
+
+#line 1 "_user_code_main_"
+%s
+
+}
+"""
+
+
 class Compiler:
-    def __init__ (self, text, onFinishedCb):
+    def __init__ (self, userCode, onFinishedCb):
         self.onFinishedCb = onFinishedCb
         self.output = ""
 
+        (cppText, self.numIncludeLines) = self.translateCode(userCode)
+
         (fileno, self.tempFile) = tempfile.mkstemp(prefix='cpp-', suffix='.C', text=True)
         fd = os.fdopen(fileno, 'w')
-        fd.write(text)
+        fd.write(cppText)
         fd.close()
 
         self.exePath = tempfile.mktemp(prefix='cpp-', suffix='.bin')
@@ -98,6 +117,20 @@ class Compiler:
     def onOutput (self, text):
         self.output += text
 
+    def translateCode (self, userCode):
+        includeLines = ""
+        codeLines = ""
+        numIncludeLines = 0
+        for line in userCode.splitlines(True):
+            if re.search(r'^\s*#include', line):
+                includeLines += line
+                numIncludeLines += 1
+            else:
+                codeLines += line
+
+        cppText = cppTemplate % (includeLines, codeLines)
+        return (cppText, numIncludeLines)
+
     def parseOutput (self, output):
         errors = []
         warnings = []
@@ -117,6 +150,7 @@ class Compiler:
                 continue
 
             lineNo = int(locTuple[1])
+            lineNo += self.numIncludeLines
 
             if msg.startswith('error: '):
                 innerMsg = msg[7:]
@@ -243,24 +277,6 @@ class ExecQueue:
 
 
 
-
-cppTemplate = """
-
-%s
-
-#include <iostream>
-using namespace std;
-
-int main (int argc, char* argv[])
-{
-
-#line 1 "_user_code_main_"
-%s
-
-}
-"""
-
-
 MARGIN_WIDTH = 24
 
 class CppShellGui:
@@ -335,26 +351,12 @@ class CppShellGui:
         text = self.bufferIn.get_text(self.bufferIn.get_start_iter(), self.bufferIn.get_end_iter())
         print text
 
-        task = self._makeTask()
+        task = Task(text, self.onOutput, self.onTaskChanged)
         self.queue.enqueue(task)
 
         fd = open(self.saveFileName, 'w')
         fd.write(text)
         fd.close()
-
-    def _makeTask (self):
-        userText = self.bufferIn.get_text(self.bufferIn.get_start_iter(), self.bufferIn.get_end_iter())
-
-        includeLines = ""
-        codeLines = ""
-        for line in userText.splitlines(True):
-            if re.search(r'^\s*#include', line):
-                includeLines += line
-            else:
-                codeLines += line
-
-        cppText = cppTemplate % (includeLines, codeLines)
-        return Task(cppText, self.onOutput, self.onTaskChanged)
 
     def onTaskChanged (self, task, newState, oldState):
         "called when current Task makes a state change"

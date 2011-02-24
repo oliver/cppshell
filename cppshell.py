@@ -134,7 +134,7 @@ class Executer:
         self.proc = GProcess(cmd, self.onProcFinished, self.onStdout, self.onStderr)
 
     def onProcFinished (self, exitCode):
-        self.finishedCb()
+        self.finishedCb(exitCode)
 
     def onStdout (self, text):
         self.outputCb(text, 'stdout')
@@ -153,19 +153,24 @@ class Task:
         self.onStateChanged = onStateChanged
         self.errorDetails = None
         self._compilerResult = None
+        self._runExitCode = None
         self.state = STATE_INITIAL
         self.exePath = None
         self.outputText = None
 
     def setState (self, newState):
+        oldState = self.state
         self.state = newState
-        self.onStateChanged(self, newState)
+        self.onStateChanged(self, newState, oldState)
 
     def error (self):
         return self.errorDetails
 
     def compilerResult (self):
         return self._compilerResult
+
+    def exitCode (self):
+        return self._runExitCode
 
     def start (self, taskFinishedCb):
         self.taskFinishedCb = taskFinishedCb
@@ -194,8 +199,9 @@ class Task:
             self.compiler = None
             self.work()
 
-    def _onExecFinished (self):
+    def _onExecFinished (self, exitCode):
         print "execution finished"
+        self._runExitCode = exitCode
         self.outputText = "abc"
         self.setState(STATE_FINISHED)
         self.taskFinishedCb()
@@ -345,7 +351,7 @@ class CppShellGui:
         cppText = cppTemplate % (includeLines, codeLines)
         return Task(cppText, self.onOutput, self.onTaskChanged)
 
-    def onTaskChanged (self, task, newState):
+    def onTaskChanged (self, task, newState, oldState):
         "called when current Task makes a state change"
         imgStatus = self.tree.get_widget('imgStatus')
         iconSize = gtk.ICON_SIZE_MENU
@@ -362,14 +368,25 @@ class CppShellGui:
         else:
             imgStatus.clear()
 
-        compilerResult = task.compilerResult()
-        if compilerResult is not None:
+        self.tree.get_widget('lblStatus').set_text('')
+        if oldState == STATE_COMPILING:
+            compilerResult = task.compilerResult()
+            assert(compilerResult is not None)
+            if compilerResult[0]:
+                self.tree.get_widget('lblStatus').set_text('compilation failed')
+
             self.clearMarkers()
             for (w,l) in compilerResult[1]:
                 self.setMarker(l, w, 'warning')
-
             for (w,l) in compilerResult[0]:
                 self.setMarker(l, w, 'error')
+        elif oldState == STATE_RUNNING:
+            exitCode = task.exitCode()
+            assert(exitCode is not None)
+            if exitCode > 0:
+                self.tree.get_widget('lblStatus').set_text('exit code: %d' % exitCode)
+            elif exitCode < 0:
+                self.tree.get_widget('lblStatus').set_text('killed by signal %d' % (-exitCode))
 
     def onOutput (self, text, typ):
         if typ == 'stderr':

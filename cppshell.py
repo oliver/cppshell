@@ -112,6 +112,8 @@ class Compiler:
             self.onFinishedCb(self.exePath, errors, warnings)
         else:
             os.rename(self.tempFile, '/tmp/cppshell-failed-code.C')
+            if not(errors):
+                errors = [ ('(unknown error)', 1) ]
             self.onFinishedCb(None, errors, warnings)
 
     def onOutput (self, text):
@@ -234,6 +236,7 @@ class Task:
             self.setState(STATE_FINISHED)
             self.taskFinishedCb()
         else:
+            assert(exePath is not None)
             self.exePath = exePath
             self.compiler = None
             self.work()

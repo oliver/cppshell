@@ -347,7 +347,7 @@ class CppShellGui:
         includeLines = ""
         codeLines = ""
         for line in userText.splitlines(True):
-            if re.search('^\s#include', line):
+            if re.search(r'^\s*#include', line):
                 includeLines += line
             else:
                 codeLines += line

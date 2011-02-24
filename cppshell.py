@@ -87,11 +87,12 @@ class Compiler:
         self.proc = GProcess(cmd, self.onProcFinished, self.onOutput, self.onOutput, env)
 
     def onProcFinished (self, exitCode):
-        os.unlink(self.tempFile)
         (errors, warnings) = self.parseOutput(self.output)
         if exitCode == 0:
+            os.unlink(self.tempFile)
             self.onFinishedCb(self.exePath, errors, warnings)
         else:
+            os.rename(self.tempFile, '/tmp/cppshell-failed-code.C')
             self.onFinishedCb(None, errors, warnings)
 
     def onOutput (self, text):

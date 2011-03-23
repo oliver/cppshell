@@ -39,7 +39,6 @@ class GProcess:
     def _onReadable (self, fd, cond, callback):
         if (cond & gobject.IO_IN):
             readText = fd.read(4000)
-            print "(read %d bytes)" % len(readText)
             if callback:
                 callback(readText)
             return True
@@ -47,7 +46,6 @@ class GProcess:
             # read all remaining data from pipe
             while True:
                 readText = fd.read(4000)
-                print "(read %d bytes before finish)" % len(readText)
                 if len(readText) <= 0:
                     break
                 if callback:
@@ -55,7 +53,6 @@ class GProcess:
 
             fd.close()
             self.pipesOpen -= 1
-            print "now have %d pipes open" % self.pipesOpen
             if self.pipesOpen <= 0:
                 exitCode = self.proc.wait()
                 print "exitCode: %d" % exitCode
@@ -365,9 +362,7 @@ class CppShellGui:
         self.execute()
 
     def execute (self):
-        print "executing..."
         text = self.bufferIn.get_text(self.bufferIn.get_start_iter(), self.bufferIn.get_end_iter())
-        print text
 
         task = Task(text, self.onOutput, self.onTaskChanged)
         self.queue.enqueue(task)

@@ -316,6 +316,11 @@ class CppShellGui:
         self.tree.get_widget("tbExecute").add_accelerator("clicked", accel_group,
             gtk.keysyms.KP_Enter, gtk.gdk.CONTROL_MASK, gtk.ACCEL_VISIBLE)
 
+        if not(hasattr(self.txtIn, 'set_tooltip_text')):
+            self.tooltipsObject = gtk.Tooltips()
+        else:
+            self.tooltipsObject = None
+
         self.queue = ExecQueue()
 
         self.saveFileName = os.path.expanduser('~/.config/cppshell.txt')
@@ -423,10 +428,21 @@ class CppShellGui:
             widget.set_from_stock(gtk.STOCK_DIALOG_WARNING, gtk.ICON_SIZE_MENU)
         else:
             widget.set_from_stock(gtk.STOCK_DIALOG_ERROR, gtk.ICON_SIZE_MENU)
-        widget.set_tooltip_text(text)
-        widget.show()
+
+        if not(self.tooltipsObject):
+            widget.set_tooltip_text(text)
+        else:
+            # use old tooltips API for GTK < 2.12:
+            eventBox = gtk.EventBox()
+            eventBox.add(widget)
+            self.tooltipsObject.set_tip(eventBox, text)
+            widget = eventBox
+
+        widget.show_all()
         self.txtIn.add_child_in_window(widget, gtk.TEXT_WINDOW_LEFT, 0, 0)
         self.markers[lineNo] = widget
+
+        self.txtIn.queue_draw()
 
 if __name__ == '__main__':
     gui = CppShellGui()

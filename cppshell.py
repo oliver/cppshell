@@ -69,7 +69,9 @@ class GProcess:
 
 cppTemplate = """
 
+#line 1 "_user_code_include_"
 %s
+#line 1 "_generated_code_main_start_"
 
 #include <iostream>
 using namespace std;
@@ -123,8 +125,11 @@ class Compiler:
         includeLines = ""
         codeLines = ""
         numIncludeLines = 0
+        lineNo = 0
         for line in userCode.splitlines(True):
+            lineNo+=1
             if re.search(r'^\s*#include', line):
+                includeLines += '#line %d "_user_code_include_"\n' % (lineNo)
                 includeLines += line
                 numIncludeLines += 1
             else:
@@ -143,16 +148,21 @@ class Compiler:
             except:
                 # ignore
                 continue
+
             locTuple = loc.split(':')
-            if locTuple[0] != '_user_code_main_':
-                # ignore messages for code not entered by user
-                continue
             if len(locTuple) < 2:
                 # ignore messages without line number
                 continue
 
             lineNo = int(locTuple[1])
-            lineNo += self.numIncludeLines
+
+            if locTuple[0] == '_user_code_include_':
+                pass
+            elif locTuple[0] == '_user_code_main_':
+                lineNo += self.numIncludeLines
+            else:
+                # ignore messages for code not entered by user
+                continue
 
             if msg.startswith('error: '):
                 innerMsg = msg[7:]
